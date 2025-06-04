@@ -48,8 +48,8 @@ type Doc = {
 /**
  * list available collections, subdirs of src/content
  */
-const ListCollections = async () => {
-	const base = path.join("src", "content");
+const ListCollections = async (dir?: string) => {
+	const base = path.join(dir ?? "src/content");
 	const files = await fs.readdir(base);
 	const list: string[] = [];
 
@@ -158,7 +158,7 @@ const RebuildSearchIndex = async (
 	}
 
 	if (!options.collections) {
-		options.collections = await ListCollections();
+		options.collections = await ListCollections(options.contentDirectory);
 	}
 
 	if (options.collections) {
