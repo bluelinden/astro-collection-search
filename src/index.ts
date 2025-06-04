@@ -26,14 +26,19 @@ export interface SearchIndexOptions {
 
   /**
    * defaults to `public`. we put the search index and the search worker
-   * into this directory. if you change it, you will need to pass the 
+   * into this directory. if you change it, you will need to pass the
    * base URI when calling `Search`.
    */
-  directory?: string;
-  
+  outputDirectory?: string;
+
+  /**
+  * defaults to `src/content`. we put the content to be indexed in this folder.
+  */
+	contentDirectory?: string;
+
 }
 
-type Doc = { 
+type Doc = {
   id?: number,
   frontmatter?: Record<string, string>
 } & { [key: string]: string };
@@ -50,7 +55,7 @@ const ListCollections = async () => {
     if ((await fs.stat(path.join(base, file))).isDirectory()) {
       list.push(file);
     }
-  } 
+  }
 
   return list;
 };
@@ -66,7 +71,7 @@ async function *ListFiles(start: string): AsyncGenerator<string, undefined, void
     const directory = (await fs.stat(file_path)).isDirectory();
     if (directory) {
       yield *ListFiles(file_path);
-    } 
+    }
     else {
       yield await Promise.resolve(file_path);
     }
@@ -75,22 +80,22 @@ async function *ListFiles(start: string): AsyncGenerator<string, undefined, void
 
 /**
  * this relies on collections being in the magic directory src/content.
- * not sure how reliable or stable that is. seems to be the way astro 
+ * not sure how reliable or stable that is. seems to be the way astro
  * expects it, though.
- * 
- * @param collection 
+ *
+ * @param collection
  */
-const ReadCollection = async (collection: string, fields: string[], logger: AstroIntegrationLogger) => {
+const ReadCollection = async (collection: string, fields: string[], logger: AstroIntegrationLogger, contentDir?: string) => {
 
   logger.info(`reading collection: ${collection}`);
 
   const docs: Doc[] = [];
-  const dir = path.join('src', 'content', collection);
+  const dir = path.join(contentDir ?? "src/content", collection);
 
   try {
 
     for await (const entry of ListFiles(dir)) {
-    
+
       if (/\.mdx{0,1}$/i.test(entry)) {
         const file = path.relative(dir, entry);
 
@@ -101,17 +106,17 @@ const ReadCollection = async (collection: string, fields: string[], logger: Astr
           body,
           collection,
           file,
-        }; 
-        
+        };
+
         const frontmatter: Record<string, string> = {};
         for (const line of fm.split(/\n/)) {
           let [key, value] = line.split(':', 2).map(value => value.trim());
 
-          // remove quotes. minisearch doesn't care but when we show 
+          // remove quotes. minisearch doesn't care but when we show
           // these values we don't want them to be quoted
 
-          if (/^['"].*['"]$/.test(value)) { 
-            value = value.substring(1, value.length - 1); 
+          if (/^['"].*['"]$/.test(value)) {
+            value = value.substring(1, value.length - 1);
           }
 
           frontmatter[key] = value;
@@ -136,15 +141,15 @@ const ReadCollection = async (collection: string, fields: string[], logger: Astr
 };
 
 const RebuildSearchIndex = async (options: SearchIndexOptions = {}, logger: AstroIntegrationLogger) => {
- 
+
   logger.info(`building search index`);
   const start = performance.now();
 
   const docs: Doc[] = [];
 
   let fields = options.fields || ['title', 'description'];
-  if (!Array.isArray(fields)) { 
-    fields = [fields]; 
+  if (!Array.isArray(fields)) {
+    fields = [fields];
   }
 
   if (!options.collections) {
@@ -154,7 +159,7 @@ const RebuildSearchIndex = async (options: SearchIndexOptions = {}, logger: Astr
   if (options.collections) {
     const collections = Array.isArray(options.collections) ? options.collections : [options.collections];
     for (const collection of collections) {
-      docs.push(...await ReadCollection(collection, fields, logger));
+      docs.push(...await ReadCollection(collection, fields, logger, options.contentDirectory));
     }
   }
 
@@ -190,10 +195,10 @@ const RebuildSearchIndex = async (options: SearchIndexOptions = {}, logger: Astr
       collections: options.collections,
     });
 
-    const artifacts_directory = path.join(options.directory ?? 'public', constants.artifacts_directory);
+    const artifacts_directory = path.join(options.outputDirectory ?? 'public', constants.artifacts_directory);
     await fs.mkdir(artifacts_directory, { recursive: true });
 
-    await fs.writeFile(path.join(options.directory ?? 'public', constants.artifacts_directory, constants.index_name), json, { encoding: 'utf-8' });
+    await fs.writeFile(path.join(options.outputDirectory ?? 'public', constants.artifacts_directory, constants.index_name), json, { encoding: 'utf-8' });
 
     // copy search worker. we don't need to do this every time, FIXME
 
@@ -204,7 +209,7 @@ const RebuildSearchIndex = async (options: SearchIndexOptions = {}, logger: Astr
     const worker = 'minisearch-worker.mjs';
 
     logger.info(`copying search worker`);
-    await fs.copyFile(path.join(import.meta.dirname, '..', 'dist', worker), path.join(options.directory ?? 'public', constants.artifacts_directory, constants.worker_name));
+    await fs.copyFile(path.join(import.meta.dirname, '..', 'dist', worker), path.join(options.outputDirectory ?? 'public', constants.artifacts_directory, constants.worker_name));
 
   }
   else {
@@ -220,7 +225,7 @@ const createPlugin = (options?: SearchIndexOptions): AstroIntegration => {
   const integration: AstroIntegration = {
     name: 'Collection search',
     hooks: {
-      
+
       'astro:config:done': async ({ logger }) => {
         await RebuildSearchIndex(options, logger);
 			},
