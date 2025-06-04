@@ -172,6 +172,7 @@ const RebuildSearchIndex = async (
 					fields,
 					logger,
 					options.contentDirectory,
+					options.customRegex
 				)),
 			);
 		}
